@@ -1,0 +1,247 @@
+#!/bin/bash
+
+# Julian Gauger s82814
+
+# Lists all valid parameters
+
+listParameter(){
+
+	echo "Invalid parameter. Please use one of the following keywords:"
+	echo -e "(txxxxx | stat | all | plag)\n"
+}
+
+if [ -z $1 ]
+then
+	listParameter
+	exit 1
+
+else
+	if [ ${1:0:1} == "t" ]
+	then
+		if [ ! -f "$1" ]
+		then 
+			echo -e "File missing. Please import $1 to this path.\n"
+			exit 1
+		else 
+			FILE=$1
+			Points=0
+			FIRSTLINE=$(head -n 1 "$FILE")
+			echo "Test,if in the first line is a shebang"	
+				if [ ${FIRSTLINE:0:2} == "#!" ]
+				then
+					echo "Test sucessful"
+					Points=$(($Points + 1))
+				else
+					echo "Test failed"
+				fi
+
+#Test how many lines start with a #
+
+			Commentlines=$(grep -c "#.*$" $FILE)
+
+#Test how many lines are in the file
+
+			AllLines=$(grep -c ".*" $FILE)
+
+#Calculate percentage of Commentlines 
+
+			echo "Test, if more than 10% of the lines are comment lines"
+			Percentage=$(echo "scale=4; ($Commentlines/$AllLines)*100" | bc)
+                        if [ $(echo "$Percentage > 10" | bc) -ne 0 ]
+			then
+				echo "Test sucessful"
+				Points=$(($Points + 1))
+			else
+				echo "Test failed"
+			fi
+
+
+#Count all exit statements
+
+			AllExitStatements=$(grep -c "exit" $FILE)
+
+#Count all exit statements in comment lines
+
+			ExitStatementsCommentary=$(grep "#.*$" $FILE | grep -cw "exit")
+
+#Calculate the exit statements in the Code without the statements in comment lines
+
+			ExitStatementsCode=$(echo $(($AllExitStatements - $ExitStatementsCommentary)))
+
+#If u have more than 0 exit statements outside the comment lines u get a point
+
+			echo "Test, if you have more than 0 exit statements outside comment lines"
+			if [ $ExitStatementsCode -gt "0" ]
+			then
+				Points=$(($Points + 1))
+				echo "Test sucessful"
+			else
+				echo "Test failed"
+			fi
+
+
+#Call the File and analyze return value
+
+			echo "Test, if the return vaue of the called file is not 0"
+			./$FILE </dev/null >/dev/null
+			if [ $? -ne 0 ];
+			then
+				Points=$(($Points + 1))
+				echo "Test sucessful"
+			else
+				echo "Test failed"
+			fi
+
+#Call the file with the parameter "count", stdout should be the number of lines in bib.csv
+			
+			Output=0
+			Output=$(./$FILE count ) 	
+			Output=$(echo "$Output" | grep -o -E "[0-9]{3}")
+
+#Count the lines of bib.csv
+
+			Linesofbib=$(grep -c ".*" bib.csv)
+
+#Look if they are the same number
+
+			echo "Test if count works correctly"
+			if [ "$Linesofbib" == "$Output" ]
+			then
+				Points=$(($Points + 1))
+				echo "Test sucessful"
+			else
+				echo "Test failed"
+			fi
+			
+			echo "Maximum amount of Points:5"
+			echo "You have reached $Points Points"
+
+		fi
+		exit 0
+        
+	
+
+	elif [ $1 == "stat" ]
+	then
+
+#Name and size of the smallest data
+
+
+		echo "Smallest File:"
+		du -bh t* | sort -h | head -1
+
+#Name and size of the biggest data
+		
+		echo "Biggest File:"
+		du -bh t* | sort -hr | head -1
+
+
+#Arithmetic mean of the files
+
+		echo "Arithmetic mean:"
+		SizeofFile=$(du -c t* | tail -1)
+		SizeofFile=${SizeofFile//insgesamt/}
+		NumberofFiles=$(find t* | wc -l)
+		ArithmeticMean=$(echo "scale=4; ($SizeofFile / $NumberofFiles)" | bc)
+		echo "$ArithmeticMean"
+		exit 0		
+	
+
+	elif [ $1 == "all" ]
+	then
+		yourfilenames=$(ls ./)
+		for eachfile in $yourfilenames
+		do
+			if [ ${eachfile:0:1} == "t" ]
+			then
+
+				FILE=$eachfile
+				FIRSTLINE=$(head -n 1 "$FILE")
+				if [ ${FIRSTLINE:0:2} == "#!" ]
+				then
+					Points=$(($Points + 1))
+				fi
+
+				Commentlines=$(grep -c "#.*$" $FILE)
+				AllLines=$(grep -c ".*" $FILE)
+				Percentage=$(echo "scale=4; ($Commentlines/$AllLines)*100" | bc)
+
+				if [ $(echo "$Percentage > 10" | bc) -ne 0 ]
+				then
+					Points=$(($Points + 1))
+				fi
+
+				AllExitStatements=$(grep -c "exit" $FILE)
+				ExitStatementsCommentary=$(grep "#.*$" $FILE | grep -cw "exit")
+				ExitStatementsCode=$(echo $(($AllExitStatements - $ExitStatementsCommentary)))
+
+				if [ $ExitStatementsCode -gt "0" ]
+				then
+					Points=$(($Points + 1))
+				fi
+				# Skript hängt bei diesem Beleg, da dieser Beleg ein Case-Statement benutzt.
+				# Solange man nicht einen richtigen Parameter eingibt bleibt man dort sozusagen "gefangen"
+				# Ich habe vieles versucht (z.B. unteren Code als Funktion mit einem timeout in einer Subshell aus-
+				# zuführen etc. aber nichts hat funktioniert.
+				if [ "$FILE" != "t21707" ]
+				then
+				
+				./"$FILE" </dev/null >/dev/null
+				if [ $? -ne 0 ]
+				then	
+					Points=$(($Points + 1))
+				fi
+				
+			        Output=0
+			        Output=$(./$FILE count ) 	
+				Output=$(echo "$Output" | grep -o -E "[0-9]{3}")
+
+				Linesofbib=$(grep -c ".*" bib.csv)
+
+				if [ "$Linesofbib" == "$Output" ]
+				then
+					Points=$(("$Points" + 1))
+				fi
+				fi
+
+				if [ $Points != 5 ]
+				then 
+					echo "$FILE"
+				fi
+				
+				Points=0
+				
+
+			fi
+		done
+		exit 0
+
+
+	elif [ $1 == "plag" ]
+	then
+	
+		for i in ./t*;do
+			for j in ./t*;do
+				if [ "$i" \> "$j" ];
+				then
+					diff -q "$i" "$j" >/dev/null
+					if [ $? -eq 0 ]
+					then
+						echo "File $i and $j are the same"
+					fi
+				fi
+			done
+		done
+	exit 0
+
+	else 
+	listParameter	
+	exit 1
+	fi
+fi
+
+if [ $? -ne 0 ]
+then
+	echo "Error"
+	exit 1
+fi
